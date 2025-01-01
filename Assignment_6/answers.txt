@@ -1,0 +1,159 @@
+1. In the Reddit averages execution plan, which fields were loaded? How was the average computed (and was a combiner-like step done)?
+    "== Physical Plan ==
+    AdaptiveSparkPlan isFinalPlan=false
+    +- HashAggregate(keys=[_groupingexpression#88], functions=[avg(score#16L)])
+    +- Exchange hashpartitioning(_groupingexpression#88, 200), ENSURE_REQUIREMENTS, [plan_id=79]
+        +- HashAggregate(keys=[_groupingexpression#88], functions=[partial_avg(score#16L)])
+            +- Project [score#16L, lower(subreddit#18) AS _groupingexpression#88]
+                +- FileScan json [score#16L,subreddit#18] Batched: false, DataFilters: [], Format: JSON, Location: InMemoryFileIndex(1 paths)[hdfs://controller.local:54310/courses/732/reddit-1], PartitionFilters: [], PushedFilters: [], ReadSchema: struct<score:bigint,subreddit:string>"
+
+    The following fields were loaded:
+        1. score (as score#16L, which is of type bigint)
+        2. subreddit (as subreddit#18, which is of type string)
+
+    The following steps were taken:
+        1. The subreddit field to lowercase using the lower(subreddit#18) function and creates a new field called _groupingexpression#88
+        2. HashAggregate Step: The partial aggregation (partial_avg(score#16L)) is computed. Spark computes sums and counts of each score values for each subreddit. Benefit is that it reduces the amount of data that needs to shuffled accross the network.
+        3. HashAggregate Step: Once data has been shufffled, this step computes the final average (avg(score#16L)) for each subreddit group.
+
+
+2. What was the running time for your Reddit averages implementations in the five scenarios described above? How much difference did Python implementation make (PyPy vs the default CPython)? Why was it large for RDDs but not for DataFrames?
+    Map Reduce
+    real    2m38.729s
+    user    0m9.121s
+    sys     0m1.203s
+
+    DataFrame: reddit_average_df.py - With Python
+    real    1m22.149s
+    user    0m29.640s
+    sys     0m2.819s
+
+    DataFrame: reddti_average_df.py - With PyPy
+    real    1m21.302s
+    user    0m30.238s
+    sys     0m3.045s
+
+    RDD reddti_average.py - With Python
+    real    2m17.595s
+    user    0m23.533s
+    sys     0m2.403s
+
+    RDD reddti_average.py - With PyPy
+    real    1m21.878s
+    user    0m23.785s
+    sys     0m2.294s
+
+    Python vs PyPy with DataFrames:
+    The difference between Python and PyPy when using DataFrames is minimal.
+    The reason for the differece being minimal is because datadrame operations rely heavily on Spark's optimized engine (JVM), which reduces the impact of the Python interpreter on performance.
+
+    Python vs PyPy with RDDs:
+    The difference between PyPy and Python is significant. For RDDs, PyPy greatly improves performance (from 2m17.595s to 1m21.878s)
+    The reason PyPy is faster is because RDD relies on python interpreter which is significantly faster when using PyPy's Just-In-Time (JIT) compilation.
+
+
+3. How much of a difference did the broadcast hint make to the Wikipedia popular code's running time (and on what data set)?
+    With broadcast hint - running on pagecount-3
+    real    1m21.352s
+    user    0m43.105s
+    sys     0m3.504s
+
+    Without broadcase hint - running on pagecount-3
+    real    1m30.203s
+    user    0m44.588s
+    sys     0m3.575s
+
+    Using Broadcast Hint was slightly faster (9s) then not using BroadHint and with --conf spark.sql.autoBroadcastJoinThreshold=-1
+
+4. How did the Wikipedia popular execution plan differ with and without the broadcast hint?
+
+    Plan is listed below. The key differences were:
+
+    Joining:
+        With Boradcast Hint: The smaller dataset (max_view_per_hour) is broadcasted to all nodes, allowing local joins with the larger dataset. "BroadcastHashJoin [hour#16, views#2], [hour#68, max_views#61], Inner, BuildRight, false"
+        Without Broadcast Hint: Uses a Sort Merge Join, which sorts both datasets on the join key and then merges them."SortMergeJoin [hour#16, views#2], [hour#68, max_views#61], Inner". Best to use when both datasets are large.
+
+    Shuffling:
+        Broadcast Hint: Avoids shuffling the smaller dataset, but still partitions the larger dataset. "Exchange rangepartitioning(hour#68 ASC NULLS FIRST, 200), ENSURE_REQUIREMENTS, [plan_id=418]"
+        Without Broadcast Hint: Involves sorting and partitioning both datasets, which results in more shuffling. "Sort [hour#68 ASC NULLS FIRST], true, 0"
+
+
+
+    With Boradcast hint
+    "== Physical Plan ==
+    AdaptiveSparkPlan isFinalPlan=false
+    +- Sort [hour#68 ASC NULLS FIRST], true, 0
+    +- Exchange rangepartitioning(hour#68 ASC NULLS FIRST, 200), ENSURE_REQUIREMENTS, [plan_id=418]
+        +- Project [hour#68, title#1, views#2]
+            +- BroadcastHashJoin [hour#16, views#2], [hour#68, max_views#61], Inner, BuildRight, false
+                :- Filter (isnotnull(hour#16) AND isnotnull(views#2))
+                :  +- InMemoryTableScan [title#1, views#2, hour#16], [isnotnull(hour#16), isnotnull(views#2)]
+                :        +- InMemoryRelation [language#0, title#1, views#2, size#3L, filename#8, hour#16], StorageLevel(disk, memory, deserialized, 1 replicas)
+                :              +- *(2) Project [language#0, title#1, views#2, size#3L, filename#8, pythonUDF0#23 AS hour#16]
+                :                 +- BatchEvalPython [path_to_hour(filename#8)#15], [pythonUDF0#23]
+                :                    +- *(1) Filter ((isnotnull(language#0) AND isnotnull(title#1)) AND (((language#0 = en) AND NOT (title#1 = Main_Page)) AND NOT StartsWith(title#1, Special:)))
+                :                       +- *(1) Project [language#0, title#1, views#2, size#3L, input_file_name() AS filename#8]
+                :                          +- FileScan csv [language#0,title#1,views#2,size#3L] Batched: false, DataFilters: [], Format: CSV, Location: InMemoryFileIndex(1 paths)[hdfs://controller.local:54310/courses/732/pagecounts-3], PartitionFilters: [], PushedFilters: [], ReadSchema: struct<language:string,title:string,views:int,size:bigint>
+                +- BroadcastExchange HashedRelationBroadcastMode(List(input[0, string, true], input[1, int, false]),false), [plan_id=414]
+                +- Filter isnotnull(max_views#61)
+                    +- HashAggregate(keys=[hour#68], functions=[max(views#66)])
+                        +- Exchange hashpartitioning(hour#68, 200), ENSURE_REQUIREMENTS, [plan_id=410]
+                            +- HashAggregate(keys=[hour#68], functions=[partial_max(views#66)])
+                            +- Filter isnotnull(hour#68)
+                                +- InMemoryTableScan [views#66, hour#68], [isnotnull(hour#68)]
+                                        +- InMemoryRelation [language#64, title#65, views#66, size#67L, filename#8, hour#68], StorageLevel(disk, memory, deserialized, 1 replicas)
+                                            +- *(2) Project [language#0, title#1, views#2, size#3L, filename#8, pythonUDF0#23 AS hour#16]
+                                                +- BatchEvalPython [path_to_hour(filename#8)#15], [pythonUDF0#23]
+                                                    +- *(1) Filter ((isnotnull(language#0) AND isnotnull(title#1)) AND (((language#0 = en) AND NOT (title#1 = Main_Page)) AND NOT StartsWith(title#1, Special:)))
+                                                    +- *(1) Project [language#0, title#1, views#2, size#3L, input_file_name() AS filename#8]
+                                                        +- FileScan csv [language#0,title#1,views#2,size#3L] Batched: false, DataFilters: [], Format: CSV, Location: InMemoryFileIndex(1 paths)[hdfs://controller.local:54310/courses/732/pagecounts-3], PartitionFilters: [], PushedFilters: [], ReadSchema: struct<language:string,title:string,views:int,size:bigint>
+    "
+
+    Without Broadcast Hint:
+    "
+    == Physical Plan ==
+    AdaptiveSparkPlan isFinalPlan=false
+    +- Sort [hour#68 ASC NULLS FIRST], true, 0
+    +- Exchange rangepartitioning(hour#68 ASC NULLS FIRST, 200), ENSURE_REQUIREMENTS, [plan_id=579]
+        +- Project [hour#68, title#1, views#2]
+            +- SortMergeJoin [hour#16, views#2], [hour#68, max_views#61], Inner
+                :- Sort [hour#16 ASC NULLS FIRST, views#2 ASC NULLS FIRST], false, 0
+                :  +- Exchange hashpartitioning(hour#16, views#2, 200), ENSURE_REQUIREMENTS, [plan_id=572]
+                :     +- Filter (isnotnull(hour#16) AND isnotnull(views#2))
+                :        +- InMemoryTableScan [title#1, views#2, hour#16], [isnotnull(hour#16), isnotnull(views#2)]
+                :              +- InMemoryRelation [language#0, title#1, views#2, size#3L, filename#8, hour#16], StorageLevel(disk, memory, deserialized, 1 replicas)
+                :                    +- *(2) Project [language#0, title#1, views#2, size#3L, filename#8, pythonUDF0#23 AS hour#16]
+                :                       +- BatchEvalPython [path_to_hour(filename#8)#15], [pythonUDF0#23]
+                :                          +- *(1) Filter ((isnotnull(language#0) AND isnotnull(title#1)) AND (((language#0 = en) AND NOT (title#1 = Main_Page)) AND NOT StartsWith(title#1, Special:)))
+                :                             +- *(1) Project [language#0, title#1, views#2, size#3L, input_file_name() AS filename#8]
+                :                                +- FileScan csv [language#0,title#1,views#2,size#3L] Batched: false, DataFilters: [], Format: CSV, Location: InMemoryFileIndex(1 paths)[hdfs://controller.local:54310/courses/732/pagecounts-3], PartitionFilters: [], PushedFilters: [], ReadSchema: struct<language:string,title:string,views:int,size:bigint>
+                +- Sort [hour#68 ASC NULLS FIRST, max_views#61 ASC NULLS FIRST], false, 0
+                +- Exchange hashpartitioning(hour#68, max_views#61, 200), ENSURE_REQUIREMENTS, [plan_id=573]
+                    +- Filter isnotnull(max_views#61)
+                        +- HashAggregate(keys=[hour#68], functions=[max(views#66)])
+                            +- Exchange hashpartitioning(hour#68, 200), ENSURE_REQUIREMENTS, [plan_id=567]
+                            +- HashAggregate(keys=[hour#68], functions=[partial_max(views#66)])
+                                +- Filter isnotnull(hour#68)
+                                    +- InMemoryTableScan [views#66, hour#68], [isnotnull(hour#68)]
+                                        +- InMemoryRelation [language#64, title#65, views#66, size#67L, filename#8, hour#68], StorageLevel(disk, memory, deserialized, 1 replicas)
+                                                +- *(2) Project [language#0, title#1, views#2, size#3L, filename#8, pythonUDF0#23 AS hour#16]
+                                                    +- BatchEvalPython [path_to_hour(filename#8)#15], [pythonUDF0#23]
+                                                    +- *(1) Filter ((isnotnull(language#0) AND isnotnull(title#1)) AND (((language#0 = en) AND NOT (title#1 = Main_Page)) AND NOT StartsWith(title#1, Special:)))
+                                                        +- *(1) Project [language#0, title#1, views#2, size#3L, input_file_name() AS filename#8]
+                                                            +- FileScan csv [language#0,title#1,views#2,size#3L] Batched: false, DataFilters: [], Format: CSV, Location: InMemoryFileIndex(1 paths)[hdfs://controller.local:54310/courses/732/pagecounts-3], PartitionFilters: [], PushedFilters: [], ReadSchema: struct<language:string,title:string,views:int,size:bigint>
+    "
+5. For the weather data question, did you prefer writing the “DataFrames + Python methods” style, or the “temp tables + SQL syntax” style form solving the problem? Which do you think produces more readable code?
+
+    Time for DataFrames + Python methods:
+        real    0m35.976s
+        user    0m49.290s
+        sys     0m3.851s
+
+    Time for temp tables + SQL syntax:
+        real    0m33.701s
+        user    0m43.258s
+        sys     0m3.147s
+
+    There is no significant advantage of using one over the other,SparkSQL was 2sec faster than DataFrames. Personally I prefer using "DataFrames + Python" as it is more readable code to me. 
+    This is because I am more familiar with DataFrames than SQL. 
+    The best option depends on external factors, for ex: the team I am working with. If they are more familiar with DataFrames or SQL.
