@@ -1,0 +1,70 @@
+1.What happened when you inserted another row with the same primary key as an existing row?
+    Cassandra treats inserts and updates as UPSERT operations, this is why it updated the record for the primary key. Ex: table
+        id | data
+    ----+-------------
+    5 |        cinq
+    1 |     initial
+    8 |   octagonal
+    2 |      double
+    4 |      square
+    7 |    sevenish
+    6 | hexadecimal
+    9 |        neun
+    3 |       third
+
+    run this command: "INSERT INTO test (id, data) VALUES (3, 'tertiary');". Updated table would be:
+        id | data
+    ----+-------------
+    5 |        cinq
+    1 |     initial
+    8 |   octagonal
+    2 |      double
+    4 |      square
+    7 |    sevenish
+    6 | hexadecimal
+    9 |        neun
+    3 |    tertiary
+
+
+2. What happened when you query a keyspace with replication factor 1 and one node down? How did it behave with replication factor 2 and a node down?
+
+    With replication factor 1:
+    The query failed with the following error message:
+    NoHostAvailable: ('Unable to complete the operation against any hosts', {<Host: 10.17.203.211:9042 datacenter1>: Unavailable('Error from server: code=1000 [Unavailable exception] message="Cannot achieve consistency level ONE" info={\'consistency\': \'ONE\', \'required_replicas\': 1, \'alive_replicas\': 0}')})
+
+    With replication factor:2
+    The query was successful even when one node is down.
+3. How did the consistency level affect the results with the node up/down?
+
+    Consistency One:
+        When one node up and one is down:  Succeeds with one replica, lowest consistency guarantee
+        When both nodes are up: Succeeds, Highest availability, low latency
+    Consistency All: 
+        When one node up and one is down: Fails due to insufficient replicas
+        When both nodes are up: High consistency, query succeeds
+    Consistency QUORUM:
+        When one node up and one is down: Succeeds with one replica, higher availability
+        When both nodes are up: Balanced, succeeds with majority
+
+
+4. Which of the WHERE id=? values returned successfully with CONSISTENCY ALL when one of the nodes was down? Why do you think some could be returned but not others?
+    With one node down and consistency set to All. The only successful WHERE id= was 4. The following where id values, 1,2,3 and 5 failed. 
+    id=4 data was fully replicated on the nodes that were still up, the query could return successfully. 
+    For the other IDs, their replicas might have been partly on the downed node, causing the query to fail due to insufficient replicas available to fulfill the CONSISTENCY ALL requirement.
+
+5. What was the CREATE TABLE statement you used for the nasalogs table? What was the primary key you choose, and why?
+    CREATE TABLE IF NOT EXISTS nasalogs (
+        id UUID,
+        host TEXT,
+        datetime TIMESTAMP,
+        path TEXT,
+        bytes INT,
+        PRIMARY KEY (host, id)
+    );
+
+    The primary key I used was (host, id)
+    Host: all records associated with a particular host are stored together on the same node or set of replicas.
+    id: clustering key within each host partition allows for unique identification of each log entry. 
+
+6. What was the CQL query you used (or tried) to get the total number of bytes?
+    SELECT SUM(bytes) FROM iaa40.nasalogs;

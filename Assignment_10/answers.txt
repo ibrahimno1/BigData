@@ -1,0 +1,92 @@
+1. What is your best guess for the slope and intercept of the streaming points being produced?
+
+    +------------------+------------------+
+    |             slope|         intercept|
+    +------------------+------------------+
+    |-7.349534304147273|32.823806946265634|
+
+2. Is your streaming program's estimate of the slope and intercept getting better as the program runs? (That is: is the program aggregating all of the data from the start of time, or only those that have arrived since the last output?)
+
+    The program aggregates all data from the start of time. This is evident from the use of groupBy().
+    The estimates for slope and intercept improve as the program processes more data. As more batches are processesed, the slope and intercept are getting closer to the true linear regression line.
+
+
+3. In the colour classification question, what were your validation scores for the RGB and LAB pipelines?
+    
+    Validation score for RGB model: 0.6236959761549925
+    Validation score for LAB model: 0.6974664679582713
+
+4. When predicting the tmax values, did you over-fit the training data (and for which training/validation sets)?
+    Dataset tmax-1
+    Training Root Mean Square Error (RMSE): 3.5157175192898644
+    Training R-squared (R2): 0.9193810875318976
+    Validation Root Mean Square Error (RMSE): 4.093952406676156
+    Validation R-squared (R2): 0.857911791579401
+
+    R2 comparison: Validation R2 (85.79%) is slightly lower than training R2 (91.94%), showing reasonable generalization.
+    RMSE comparison: Validation RMSE (4.09°C) is moderately higher than training RMSE (3.52°C), with a small increase (~0.57°C).
+    Conclusion: No significant overfitting; the model generalizes well.
+
+    Dataset tmax-2
+    Training Root Mean Square Error (RMSE): 4.293842367771851
+    Training R-squared (R2): 0.8879704284370163
+    Validation Root Mean Square Error (RMSE): 4.359936334140106
+    Validation R-squared (R2): 0.888423042906068
+
+    R2 comparison: Validation R2 (88.84%) is nearly identical to training R2 (88.80%).
+    RMSE comparison: Validation RMSE (4.36°C) is slightly higher than training RMSE (4.29°C) by ~0.07°C.
+    Conclusion: No overfitting; the model generalizes excellently.
+
+
+    Dataset tmax-3
+    Training Root Mean Square Error (RMSE): 4.2995333746812285
+    Training R-squared (R2): 0.8887704662333542
+    Validation Root Mean Square Error (RMSE): 4.3498762085345115
+    Validation R-squared (R2): 0.8865971039081935
+
+    R2 comparison: Validation R2 (88.66%) is very close to training R2 (88.88%).
+    RMSE comparison: Validation RMSE (4.35°C) is nearly the same as training RMSE (4.30°C), with a negligible difference (~0.05°C).
+    Conclusion: No overfitting; the model generalizes well.
+
+
+5. What were your testing scores for your model with and without the “yesterday's temperature” feature?
+
+    With Yesterday Temperature
+    r2 = 0.83354969028807
+    rmse = 5.27466232999272
+
+    Without Yesterday Temperature
+    r2 = 0.5714463014672198
+    rmse = 8.463597126534466
+
+ yesterday
+6. If you're using a tree-based model, you'll find a .featureImportances property that describes the relative importance of each feature (code commented out in weather_test.py; if not, skip this question). Have a look with and without the “yesterday's temperature” feature: do the results make sense and suggest that your model is making decisions reasonably? With “yesterday's temperature”, is it just predicting “same as”?
+
+    The results indicate that with yesterday_tmax, the model heavily relies on it (71.32% importance), likely predicting "same as yesterday" with minor adjustments. 
+    This boosts accuracy but risks overfitting and limits adaptability to sudden changes.
+
+    Without yesterday_tmax, the importance shifts to features like day_of_year (41.79%) and latitude, resulting in less accurate but more generalized predictions based on broader weather patterns.
+    The results make sense, as yesterday_tmax is a strong predictor. The choice to include it depends on whether the goal is higher accuracy or a more generalized model.
+    
+        With yesterday - dataset tmax-3
+        latitude: 0.1329987481721275
+        longitude: 0.008301440000410661
+        elevation: 0.0013824318270205175
+        day_of_year: 0.14408232903333376
+        yesterday_tmax: 0.7132350509671076
+        Training Root Mean Square Error (RMSE): 4.2995333746812285
+        Training R-squared (R2): 0.8887704662333542
+        Validation Root Mean Square Error (RMSE): 4.3498762085345115
+        Validation R-squared (R2): 0.8865971039081935
+
+        Weather Tomorrow Prediction: 8.27
+
+        Without yesterday
+        latitude: 0.42506772983161106
+        longitude: 0.031134225365267464
+        elevation: 0.009821824169709397
+        day_of_year: 0.5339762206334121
+        Training Root Mean Square Error (RMSE): 7.0781032676142255
+        Training R-squared (R2): 0.6985527980539156
+        Validation Root Mean Square Error (RMSE): 7.063291212008769
+        Validation R-squared (R2): 0.700990783791874
